@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/transaction_model.dart';
 import '../../data/repositories/transaction_repository.dart';
+import '../transactions/transactions_provider.dart';
 
 class CalendarData {
   final Map<DateTime, List<TransactionModel>> transactionsByDay;
@@ -16,6 +17,10 @@ final calendarMonthProvider =
     StateProvider<DateTime>((_) => DateTime.now());
 
 final calendarProvider = FutureProvider<CalendarData>((ref) async {
+  // Watching transactionsProvider means this rebuilds automatically
+  // whenever any transaction is added, edited, or deleted.
+  ref.watch(transactionsProvider);
+
   final month = ref.watch(calendarMonthProvider);
   final repo = TransactionRepository();
 

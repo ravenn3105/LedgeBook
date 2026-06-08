@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/transaction_model.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../data/repositories/tag_repository.dart';
+import '../transactions/transactions_provider.dart';
 
 enum DateRangeFilter { today, thisWeek, thisMonth, lastMonth, allTime }
 
@@ -29,6 +30,10 @@ final dateRangeFilterProvider =
     StateProvider<DateRangeFilter>((_) => DateRangeFilter.thisMonth);
 
 final analyticsProvider = FutureProvider<AnalyticsData>((ref) async {
+  // Watching transactionsProvider means this rebuilds automatically
+  // whenever any transaction is added, edited, or deleted.
+  ref.watch(transactionsProvider);
+
   final filter = ref.watch(dateRangeFilterProvider);
   final txRepo = TransactionRepository();
   final tagRepo = TagRepository();
@@ -72,9 +77,7 @@ final analyticsProvider = FutureProvider<AnalyticsData>((ref) async {
       .where((t) => t.type == 'cash_out')
       .fold(0.0, (s, t) => s + t.amount);
 
-  // Tag-wise expenses
   final Map<String, double> tagExpenses = {};
-  final allTags = await tagRepo.getAll();
 
   for (final tx in transactions.where((t) => t.type == 'cash_out')) {
     final tags = await tagRepo.getForTransaction(tx.id);
@@ -89,7 +92,6 @@ final analyticsProvider = FutureProvider<AnalyticsData>((ref) async {
     }
   }
 
-  // Daily expenses for the range
   final Map<String, double> dailyExpenses = {};
   for (final tx in transactions.where((t) => t.type == 'cash_out')) {
     final date = DateTime.fromMillisecondsSinceEpoch(tx.date);
@@ -97,12 +99,12 @@ final analyticsProvider = FutureProvider<AnalyticsData>((ref) async {
     dailyExpenses[key] = (dailyExpenses[key] ?? 0) + tx.amount;
   }
 
-  // Month-over-month (last 4 months)
-  final Map<String, double> monthlyComparison = {};
   const monthNames = [
-    '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    '',
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
   ];
+  final Map<String, double> monthlyComparison = {};
   for (int i = 3; i >= 0; i--) {
     final month = DateTime(now.year, now.month - i, 1);
     final monthEnd = DateTime(now.year, now.month - i + 1, 1)

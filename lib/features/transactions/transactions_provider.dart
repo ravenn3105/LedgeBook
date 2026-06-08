@@ -43,6 +43,25 @@ class TransactionsNotifier extends AsyncNotifier<List<TransactionModel>> {
     ref.invalidateSelf();
   }
 
+  Future<void> updateTransaction({
+    required TransactionModel transaction,
+    required List<String> tagIds,
+  }) async {
+    final updated = TransactionModel(
+      id: transaction.id,
+      notebookId: transaction.notebookId,
+      amount: transaction.amount,
+      type: transaction.type,
+      note: transaction.note,
+      paymentMethodId: transaction.paymentMethodId,
+      date: transaction.date,
+      createdAt: transaction.createdAt,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await _repo.update(updated, tagIds);
+    ref.invalidateSelf();
+  }
+
   Future<void> deleteTransaction(String id) async {
     await _repo.delete(id);
     ref.invalidateSelf();
