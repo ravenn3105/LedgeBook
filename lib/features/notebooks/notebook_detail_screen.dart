@@ -8,6 +8,7 @@ import '../../data/models/notebook_model.dart';
 import '../../data/models/transaction_model.dart';
 import '../transactions/transactions_provider.dart';
 import '../transactions/add_transaction_screen.dart';
+import '../../shared/widgets/no_spend_streak_widget.dart';
 
 /// Derives notebook-specific transactions directly from the global
 /// transactionsProvider — zero extra DB calls, auto-updates on any change.
@@ -112,6 +113,14 @@ class _NotebookDetailScreenState extends ConsumerState<NotebookDetailScreen> {
       appBar: AppBar(
         title: Text(widget.notebook.title),
         backgroundColor: AppTheme.backgroundColor,
+        actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 16.0),
+            child: Center(
+              child: NoSpendStreakWidget(),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: color,
