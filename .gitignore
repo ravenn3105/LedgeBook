@@ -6,6 +6,7 @@
 .pub-cache/
 .pub/
 build/
+android/app/src/main/res/xml
 
 # Android
 android/local.properties

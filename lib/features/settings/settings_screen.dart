@@ -2,9 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:sqflite/sqflite.dart';
+
 import '../../core/theme/app_theme.dart';
 import '../tags/tags_screen.dart';
 import 'payment_methods_screen.dart';
+import '../../data/database/database_helper.dart';
+import '../transactions/transactions_provider.dart';
+import '../notebooks/notebooks_provider.dart';
+import '../dashboard/dashboard_provider.dart';
+import '../../main.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -146,6 +158,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 MaterialPageRoute(
                   builder: (_) => const PaymentMethodsScreen())),
             ),
+            _divider(),
+            _navTile(
+              icon: Icons.backup_rounded,
+              label: 'Backup & Restore',
+              onTap: () => _showBackupRestoreDialog(),
+            ),
           ]),
 
           const SizedBox(height: 20),
@@ -262,5 +280,231 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Widget _divider() {
     return const Divider(height: 1, indent: 50, color: AppTheme.borderColor);
+  }
+
+  void _showBackupRestoreDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: AppTheme.surfaceColor,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Backup & Restore',
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Back up your notebooks, transactions, and settings to Google Drive or restore from an existing backup.',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _exportBackup();
+                      },
+                      icon: const Icon(Icons.cloud_upload_rounded, color: Colors.white),
+                      label: const Text('Export Backup'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _importBackup();
+                      },
+                      icon: const Icon(Icons.cloud_download_rounded, color: AppTheme.primaryColor),
+                      label: const Text('Import Backup'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(color: AppTheme.primaryColor),
+                        foregroundColor: AppTheme.primaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _exportBackup() async {
+    try {
+      await DatabaseHelper.instance.saveSharedPreferencesToDatabase();
+
+      final dbPath = await getDatabasesPath();
+      final localFile = File(p.join(dbPath, 'ledgebook.db'));
+
+      if (!await localFile.exists()) {
+        throw Exception('Database file not found!');
+      }
+
+      await DatabaseHelper.instance.closeDatabase();
+
+      final tempDir = await getTemporaryDirectory();
+      final now = DateTime.now();
+      final dateStr = '${now.year}${_twoDigits(now.month)}${_twoDigits(now.day)}_${_twoDigits(now.hour)}${_twoDigits(now.minute)}';
+      final backupFile = await localFile.copy(p.join(tempDir.path, 'ledgebook_backup_$dateStr.db'));
+
+      await DatabaseHelper.instance.database;
+
+      await Share.shareXFiles(
+        [XFile(backupFile.path)],
+        subject: 'LedgeBook Backup $dateStr',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Backup file prepared successfully!',
+              style: GoogleFonts.inter(),
+            ),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Backup failed: $e',
+              style: GoogleFonts.inter(),
+            ),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
+  }
+
+  String _twoDigits(int n) => n >= 10 ? '$n' : '0$n';
+
+  Future<void> _importBackup() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+      );
+
+      if (result == null || result.files.single.path == null) {
+        return;
+      }
+
+      final pickedPath = result.files.single.path!;
+      final pickedFile = File(pickedPath);
+
+      final bytes = await pickedFile.readAsBytes();
+      if (bytes.length < 16) {
+        throw Exception('Selected file is not a valid SQLite database.');
+      }
+      final header = String.fromCharCodes(bytes.take(15));
+      if (header != 'SQLite format 3') {
+        throw Exception('Selected file is not a valid LedgeBook backup.');
+      }
+
+      await DatabaseHelper.instance.closeDatabase();
+
+      final dbPath = await getDatabasesPath();
+      final localFile = File(p.join(dbPath, 'ledgebook.db'));
+      await pickedFile.copy(localFile.path);
+
+      await DatabaseHelper.instance.restoreSharedPreferencesFromDatabase();
+
+      ref.invalidate(transactionsProvider);
+      ref.invalidate(notebooksProvider);
+      ref.invalidate(dashboardProvider);
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) {
+            return AlertDialog(
+              title: Text(
+                'Restore Complete',
+                style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+              ),
+              content: Text(
+                'Your notebooks, transactions, and settings have been restored successfully! The app will now reload.',
+                style: GoogleFonts.inter(),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AppRouter()),
+                      (route) => false,
+                    );
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: Text(
+                'Restore Failed',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.errorColor,
+                ),
+              ),
+              content: Text(
+                'Could not restore database: $e',
+                style: GoogleFonts.inter(),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    }
   }
 }

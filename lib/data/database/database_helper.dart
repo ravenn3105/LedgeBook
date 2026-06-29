@@ -1,5 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
@@ -110,6 +112,82 @@ class DatabaseHelper {
         'is_default': i == 0 ? 1 : 0,
         'created_at': now,
       });
+    }
+  }
+
+  Future<void> closeDatabase() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
+  }
+
+  Future<void> saveSharedPreferencesToDatabase() async {
+    final db = await database;
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys();
+
+    await db.delete('preferences');
+
+    for (final key in keys) {
+      final value = prefs.get(key);
+      if (value != null) {
+        String type = '';
+        if (value is bool) {
+          type = 'bool';
+        } else if (value is int) {
+          type = 'int';
+        } else if (value is double) {
+          type = 'double';
+        } else if (value is String) {
+          type = 'string';
+        } else if (value is List<String>) {
+          type = 'string_list';
+        }
+
+        if (type.isNotEmpty) {
+          final valJson = jsonEncode({
+            'type': type,
+            'data': value,
+          });
+
+          await db.insert('preferences', {
+            'key': key,
+            'value': valJson,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+    }
+  }
+
+  Future<void> restoreSharedPreferencesFromDatabase() async {
+    final db = await database;
+    final prefs = await SharedPreferences.getInstance();
+
+    final List<Map<String, dynamic>> maps = await db.query('preferences');
+    for (final map in maps) {
+      final key = map['key'] as String;
+      final valJsonStr = map['value'] as String;
+
+      try {
+        final valMap = jsonDecode(valJsonStr) as Map<String, dynamic>;
+        final type = valMap['type'] as String;
+        final data = valMap['data'];
+
+        if (type == 'bool') {
+          await prefs.setBool(key, data as bool);
+        } else if (type == 'int') {
+          await prefs.setInt(key, data as int);
+        } else if (type == 'double') {
+          await prefs.setDouble(key, (data as num).toDouble());
+        } else if (type == 'string') {
+          await prefs.setString(key, data as String);
+        } else if (type == 'string_list') {
+          await prefs.setStringList(key, List<String>.from(data as List));
+        }
+      } catch (e) {
+        // Ignored or logged
+      }
     }
   }
 }
