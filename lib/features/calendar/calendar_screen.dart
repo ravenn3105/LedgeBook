@@ -49,7 +49,7 @@ class CalendarScreen extends ConsumerWidget {
             // Day detail
             Expanded(
               child: selectedDay == null
-                  ? _buildMonthSummary(data)
+                  ? _buildMonthSummary(month, data)
                   : _buildDayDetail(selectedDay, data),
             ),
           ],
@@ -217,10 +217,36 @@ class CalendarScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildMonthSummary(CalendarData data) {
-    final totalDays = data.transactionsByDay.length;
-    final spendDays = data.dailyNet.values.where((v) => v < 0).length;
-    final noSpendDays = totalDays - spendDays;
+  Widget _buildMonthSummary(DateTime month, CalendarData data) {
+    // Determine the range of days that have actually elapsed in this month.
+    // For a past month: every day in the month.
+    // For the current month: only up to and including today.
+    // For a future month: zero elapsed days.
+    final today = DateTime.now();
+    final lastDayOfMonth = DateTime(month.year, month.month + 1, 0).day;
+    final isCurrentMonth =
+        month.year == today.year && month.month == today.month;
+    final isFutureMonth = DateTime(month.year, month.month, 1)
+        .isAfter(DateTime(today.year, today.month, 1));
+
+    final elapsedDayCount = isFutureMonth
+        ? 0
+        : (isCurrentMonth ? today.day : lastDayOfMonth);
+
+    // A day counts as "spend" if it has at least one cash_out transaction.
+    // Every other elapsed day in the month — including days with zero
+    // transactions at all — counts as a no-spend day. This mirrors the
+    // home screen's streak definition instead of only looking at days
+    // that happen to have a transaction record.
+    int spendDayCount = 0;
+    for (int d = 1; d <= elapsedDayCount; d++) {
+      final key = DateTime(month.year, month.month, d);
+      final txs = data.transactionsByDay[key] ?? const [];
+      final hadExpense = txs.any((t) => t.type == 'cash_out');
+      if (hadExpense) spendDayCount++;
+    }
+    final noSpendDays = elapsedDayCount - spendDayCount;
+
     final totalIn = data.transactionsByDay.values
         .expand((txs) => txs)
         .where((t) => t.type == 'cash_in')
@@ -242,7 +268,7 @@ class CalendarScreen extends ConsumerWidget {
         Row(
           children: [
             Expanded(child: _overviewTile(
-              'Active Days', '$totalDays',
+              'Active Days', '${data.transactionsByDay.length}',
               Icons.calendar_today_rounded, AppTheme.primaryColor,
             )),
             const SizedBox(width: 10),
