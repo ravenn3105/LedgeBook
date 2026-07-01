@@ -146,34 +146,70 @@ class NotebooksScreen extends ConsumerWidget {
                         color: AppTheme.textMuted,
                       ),
                     ),
-              trailing: PopupMenuButton(
-                icon: const Icon(
-                  Icons.more_vert_rounded,
-                  color: AppTheme.textMuted,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                itemBuilder: (_) => [
-                  PopupMenuItem(
-                    child: Text(
-                      'Archive',
-                      style: GoogleFonts.inter(),
-                    ),
-                    onTap: () => ref
-                        .read(notebooksProvider.notifier)
-                        .archiveNotebook(notebook.id),
-                  ),
-                  PopupMenuItem(
-                    child: Text(
-                      'Delete',
-                      style: GoogleFonts.inter(
-                        color: Colors.red,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Net amount badge
+                  Builder(builder: (context) {
+                    final net = ref.watch(
+                      notebookNetAmountProvider(notebook.id),
+                    );
+                    final isPositive = net >= 0;
+                    final color = isPositive
+                        ? AppTheme.successColor
+                        : AppTheme.errorColor;
+                    final sign = isPositive ? '+' : '';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
                       ),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$sign${net.toStringAsFixed(2)}',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: color,
+                        ),
+                      ),
+                    );
+                  }),
+                  // Popup menu
+                  PopupMenuButton(
+                    icon: const Icon(
+                      Icons.more_vert_rounded,
+                      color: AppTheme.textMuted,
                     ),
-                    onTap: () => ref
-                        .read(notebooksProvider.notifier)
-                        .deleteNotebook(notebook.id),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        child: Text(
+                          'Archive',
+                          style: GoogleFonts.inter(),
+                        ),
+                        onTap: () => ref
+                            .read(notebooksProvider.notifier)
+                            .archiveNotebook(notebook.id),
+                      ),
+                      PopupMenuItem(
+                        child: Text(
+                          'Delete',
+                          style: GoogleFonts.inter(
+                            color: Colors.red,
+                          ),
+                        ),
+                        onTap: () => ref
+                            .read(notebooksProvider.notifier)
+                            .deleteNotebook(notebook.id),
+                      ),
+                    ],
                   ),
                 ],
               ),

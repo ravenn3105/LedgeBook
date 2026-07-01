@@ -4,6 +4,29 @@ import '../../data/models/notebook_model.dart';
 import '../../data/repositories/notebook_repository.dart';
 import '../transactions/transactions_provider.dart';
 
+/// Returns the net amount (income − expense) for [notebookId].
+/// Reacts automatically when transactions change.
+final notebookNetAmountProvider =
+    Provider.family<double, String>((ref, notebookId) {
+  final txAsync = ref.watch(transactionsProvider);
+  return txAsync.when(
+    data: (txs) {
+      double net = 0;
+      for (final tx in txs) {
+        if (tx.notebookId != notebookId) continue;
+        if (tx.type == 'cash_in') {
+          net += tx.amount;
+        } else if (tx.type == 'cash_out') {
+          net -= tx.amount;
+        }
+      }
+      return net;
+    },
+    loading: () => 0,
+    error: (_, __) => 0,
+  );
+});
+
 final notebookRepositoryProvider = Provider((_) => NotebookRepository());
 
 final notebooksProvider =
